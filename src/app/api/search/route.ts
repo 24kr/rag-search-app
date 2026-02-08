@@ -1,62 +1,71 @@
-import { createClient } from '@supabase/supabase-js';
-import OpenAI from 'openai';
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from "next/server";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
-const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY!
-);
-const openai = new OpenAI();
+const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY!);
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
     try {
-        const { query } = await req.json();
+        const { query, documents } = await req.json();
 
-        // Generate embedding for the user's query
-        // This converts the search query into the same vector space as document chunks
-        const emb = await openai.embeddings.create({
-            model: 'text-embedding-3-small',
-            input: query
-        });
-
-        // Find similar documents using vector similarity search
-        // The match_documents function finds the 5 most similar chunks
-        const { data: results, error } = await supabase.rpc('match_documents', {
-            query_embedding: JSON.stringify(emb.data[0].embedding),
-            match_threshold: 0.0,  // Accept any similarity (you can increase this for stricter matching)
-            match_count: 5,        // Return top 5 most similar chunks
-        });
-
-        if (error) {
-            return NextResponse.json({ error: error.message }, { status: 500 });
+        if (!query || !documents) {
+            return NextResponse.json(
+                { error: "Query and documents are required" },
+                { status: 400 }
+            );
         }
 
-        // Combine retrieved chunks into context
-        // These chunks will be used as context for the AI to generate an answer
-        const context = results?.map((r: { content: string }) => r.content).join('\n---\n') || '';
-
-        // Generate answer using OpenAI with retrieved context
-        // This is the "Generation" part of RAG
-        const completion = await openai.chat.completions.create({
-            model: 'gpt-4o-mini',
-            messages: [
-                {
-                    role: 'system',
-                    content: 'You are a helpful assistant. Use the provided context to answer questions. If the answer is not in the context, say you do not know.'
-                },
-                {
-                    role: 'user',
-                    content: `Context: ${context}\n\nQuestion: ${query}`
-                }
-            ],
+        // Generate embedding for the query
+        const embeddingModel = genAI.getGenerativeModel({
+            model: "embedding-001",
         });
+
+        const queryEmbedding = await embeddingModel.embedContent({
+            content: query,
+        });
+
+        // Find relevant documents (simple cosine similarity)
+        const relevantDocs = findRelevantDocuments(
+            documents,
+            queryEmbedding.embedding.values
+        );
+
+        // Generate answer using Gemini
+        const generativeModel = genAI.getGenerativeModel({
+            model: "gemini-pro",
+        });
+
+        const prompt = `Based on the following documents, answer the user's question:
+
+Documents:
+${relevantDocs.map((doc: any) => doc.content).join("\n\n")}
+
+Question: ${query}
+
+Answer:`;
+
+        const result = await generativeModel.generateContent(prompt);
+        const answer = await result.response;
 
         return NextResponse.json({
-            answer: completion.choices[0].message.content,
-            sources: results
+            answer: answer.text(),
+            sources: relevantDocs.map((doc: any) => ({
+                name: doc.name,
+                content: doc.content.substring(0, 200),
+            })),
         });
-    } catch (error: unknown) {
-        const errorMessage = error instanceof Error ? error.message : 'Failed to process search';
-        return NextResponse.json({ error: errorMessage }, { status: 500 });
+    } catch (error) {
+        console.error("Search error:", error);
+        return NextResponse.json(
+            { error: "Failed to process search" },
+            { status: 500 }
+        );
     }
+}
+
+function findRelevantDocuments(
+    documents: any[],
+    queryEmbedding: number[]
+) {
+    // Simple implementation - you might want to use a vector DB like Pinecone
+    return documents.slice(0, 3); // Return top 3 documents
 }

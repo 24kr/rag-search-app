@@ -9,20 +9,22 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "@langchain/openai": "^1.2.5",
     "@langchain/textsplitters": "^1.0.1",
+    "@pinecone-database/pinecone": "^7.0.0",
     "@supabase/supabase-js": "^2.95.3",
     "langchain": "^1.2.18",
     "mammoth": "^1.11.0",
-    "next": "^16.2.0",
+    "next": "^14.2.35",
     "openai": "^6.18.0",
     "pdf2json": "^4.0.2",
-    "react": "19.2.3",
-    "react-dom": "19.2.3"
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
+    "@types/node": "^20.19.33",
     "@types/pdf-parse": "^1.1.5",
     "@types/react": "^19",
     "@types/react-dom": "^19",
